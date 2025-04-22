@@ -13,4 +13,10 @@ class Retriever:
     def query(self, text, k=3):
         embedding = self.model.encode([text], normalize_embeddings=True)
         D, I = self.index.search(np.array(embedding), k)
+        print(f"Distances: {D}")
+        print(f"Indices: {I}")
+        #print the retrieved documents
+        print("Retrieved documents:")
+        for i in I[0]:
+            print(self.doc_metadata[i])
         return [self.doc_metadata[i] for i in I[0]]
