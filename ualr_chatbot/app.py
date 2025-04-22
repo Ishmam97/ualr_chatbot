@@ -2,6 +2,8 @@ import streamlit as st
 from ualr_chatbot.retriever import Retriever
 from ualr_chatbot.llm import call_gemini
 
+st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
+st.title("🎓 UALR Q&A Chatbot v2")
 @st.cache_resource # Use cache_resource for objects like models/connections
 def load_retriever():
     """Loads and caches the Retriever instance."""
@@ -24,8 +26,8 @@ def load_retriever():
         # st.exception(e)
         return None 
 
-st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
-st.title("🎓 UALR Q&A Chatbot v2")
+retriever_instance = load_retriever()
+
 
 query = st.text_input("Ask a question:", placeholder="Type your question here...", key="query_input")
 
@@ -33,7 +35,7 @@ st.sidebar.title("🎓 UALR Chatbot - Options")
 api_key = st.sidebar.text_input("Google Gemini API Key", type="password", placeholder="Enter your API key here...")
 
 if query:
-    context_docs = Retriever.query(query)
+    context_docs = retriever_instance.query(query)
     context = "\n\n".join([doc["content"] for doc in context_docs])
 
     with st.expander("🔍 Looking through info..."):
