@@ -2,11 +2,30 @@ import streamlit as st
 from ualr_chatbot.retriever import Retriever
 from ualr_chatbot.llm import call_gemini
 
-# Load components
-retriever = Retriever("faiss_index.index", "doc_metadata.pkl")
+@st.cache_resource # Use cache_resource for objects like models/connections
+def load_retriever():
+    """Loads and caches the Retriever instance."""
+    st.info("Initializing Retriever (this should only happen once per session)...")
+    try:
+        # Provide the necessary arguments to your Retriever's __init__
+        # IMPORTANT: Make sure 'faiss_index.index' and 'doc_metadata.pkl' paths
+        # are accessible from where the Streamlit app runs. Use absolute paths
+        # or paths relative to app.py if needed.
+        retriever_instance = Retriever(index_path="faiss_index.index", metadata_path="doc_metadata.pkl")
+        st.success("Retriever initialized successfully!")
+        return retriever_instance
+    except FileNotFoundError as e:
+        st.error(f"Failed to initialize Retriever: Required file not found. {e}")
+        st.error("Ensure 'faiss_index.index' and 'doc_metadata.pkl' exist at the expected location.")
+        return None
+    except Exception as e:
+        st.error(f"Failed to initialize the Retriever: {e}")
+        # Display more details for debugging if needed
+        # st.exception(e)
+        return None 
 
 st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
-st.title("🎓 UALR Q&A Chatbot")
+st.title("🎓 UALR Q&A Chatbot v2")
 
 query = st.text_input("Ask a question:", placeholder="Type your question here...", key="query_input")
 
