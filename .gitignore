@@ -1,0 +1,5 @@
+/data/departments.xlsx
+/data/phone_qas.xlsx
+*/__pycache__/
+*/.vscode/
+poetry.lock
