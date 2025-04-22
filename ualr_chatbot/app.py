@@ -33,7 +33,7 @@ st.sidebar.title("🎓 UALR Chatbot - Options")
 api_key = st.sidebar.text_input("Google Gemini API Key", type="password", placeholder="Enter your API key here...")
 
 if query:
-    context_docs = retriever.query(query)
+    context_docs = Retriever.query(query)
     context = "\n\n".join([doc["content"] for doc in context_docs])
 
     with st.expander("🔍 Looking through info..."):
