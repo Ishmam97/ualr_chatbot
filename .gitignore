@@ -6,3 +6,4 @@ poetry.lock
 *.txt
 *.ipynb
 /tests/
+*.pyc
