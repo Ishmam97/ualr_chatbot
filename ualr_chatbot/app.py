@@ -1,7 +1,9 @@
 import streamlit as st
 from ualr_chatbot.retriever import Retriever
 from ualr_chatbot.llm import call_gemini
+import os
 
+os.environ["STREAMLIT_SERVER_ENABLE_FILE_WATCHER"] = "false" 
 st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
 st.title("🎓 UALR Q&A Chatbot v2")
 @st.cache_resource # Use cache_resource for objects like models/connections

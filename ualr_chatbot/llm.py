@@ -33,22 +33,17 @@ def call_gemini(api_key: str, prompt: str, model: str = "gemini-1.5-flash-latest
                 "parts": [{"text": prompt}]
             }
         ]
-        # Optional: Add generation config if needed
         # "generationConfig": {
         #     "temperature": 0.7,
         #     "maxOutputTokens": 1024,
         # }
     }
 
-    # Add system instruction if provided (using the common v1beta structure)
     if system_prompt:
         payload["system_instruction"] = {
              "parts": [{"text": system_prompt}]
         }
-        # Note: Some older setups might put system instructions as the first
-        # item in 'contents' with role 'system'. Check Gemini docs if needed.
 
-    # Prepare headers and parameters
     headers = {'Content-Type': 'application/json'}
     params = {'key': api_key} # API key passed as a query parameter
 
