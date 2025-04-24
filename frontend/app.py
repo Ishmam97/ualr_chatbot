@@ -1,34 +1,20 @@
-import streamlit as st
-from ualr_chatbot.retriever import Retriever
-from ualr_chatbot.llm import call_gemini
 import os
+os.environ["STREAMLIT_SERVER_ENABLE_FILE_WATCHER"] = "false"
+import streamlit as st
 
-os.environ["STREAMLIT_SERVER_ENABLE_FILE_WATCHER"] = "false" 
 st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
 st.title("🎓 UALR Q&A Chatbot v2")
-@st.cache_resource # Use cache_resource for objects like models/connections
-def load_retriever():
-    """Loads and caches the Retriever instance."""
-    st.info("Initializing Retriever (this should only happen once per session)...")
-    try:
-        # Provide the necessary arguments to your Retriever's __init__
-        # IMPORTANT: Make sure 'faiss_index.index' and 'doc_metadata.pkl' paths
-        # are accessible from where the Streamlit app runs. Use absolute paths
-        # or paths relative to app.py if needed.
-        retriever_instance = Retriever(index_path="faiss_index.index", metadata_path="doc_metadata.pkl")
-        st.success("Retriever initialized successfully!")
-        return retriever_instance
-    except FileNotFoundError as e:
-        st.error(f"Failed to initialize Retriever: Required file not found. {e}")
-        st.error("Ensure 'faiss_index.index' and 'doc_metadata.pkl' exist at the expected location.")
-        return None
-    except Exception as e:
-        st.error(f"Failed to initialize the Retriever: {e}")
-        # Display more details for debugging if needed
-        # st.exception(e)
-        return None 
 
-retriever_instance = load_retriever()
+
+base_path = os.path.dirname(__file__)
+index_path = os.path.join(base_path, "faiss_index.index")
+metadata_path = os.path.join(base_path, "doc_metadata.pkl")
+
+
+
+if "retriever_instance" not in st.session_state:
+    retriever_instance = Retriever(index_path=index_path, metadata_path=metadata_path)
+    st.session_state["retriever_instance"] = retriever_instance
 
 
 query = st.text_input("Ask a question:", placeholder="Type your question here...", key="query_input")

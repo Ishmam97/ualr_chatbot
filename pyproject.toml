@@ -16,6 +16,8 @@ streamlit = "^1.44.1"
 beautifulsoup4 = "^4.13.4"
 selenium = "^4.31.0"
 webdriver-manager = "^4.0.2"
+fastapi = "^0.115.12"
+uvicorn = "^0.34.2"
 
 
 [tool.poetry.group.dev.dependencies]
