@@ -1,0 +1,25 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    # volumes:
+    #   - .:/app
+    environment:
+      - PYTHONPATH=/app
+    depends_on:
+      - frontend
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile.Frontend
+    ports:
+      - "8501:8501"
+    volumes:
+      - .:/app
+    environment:
+      - PYTHONPATH=/app
+      - BACKEND_URL=http://backend:8000

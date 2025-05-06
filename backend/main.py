@@ -1,8 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from ualr_chatbot.retriever import Retriever
-from ualr_chatbot.llm import call_gemini
+from backend.ualr_chatbot.retriever import Retriever
+from backend.ualr_chatbot.llm import call_gemini
 import os
 import logging
 
@@ -13,15 +13,20 @@ app = FastAPI(title="UALR Chatbot API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8501"],
+    allow_origins=["*"],  # Allow all origins for now, restrict in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-INDEX_PATH = os.path.join(BASE_DIR, "ualr_chatbot", "faiss_index.index")
-METADATA_PATH = os.path.join(BASE_DIR, "ualr_chatbot", "doc_metadata.pkl")
+# Update paths for containerized environment
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+INDEX_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "faiss_index.index")
+METADATA_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "doc_metadata.pkl")
+
+logger.info(f"BASE_DIR: {BASE_DIR}")
+logger.info(f"INDEX_PATH: {INDEX_PATH}")
+logger.info(f"METADATA_PATH: {METADATA_PATH}")
 
 try:
     retriever = Retriever(index_path=INDEX_PATH, metadata_path=METADATA_PATH)
@@ -66,6 +71,10 @@ async def handle_query(request: QueryRequest):
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "UALR Chatbot API is running"}
 
 @app.get("/")
 async def root():
