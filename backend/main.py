@@ -25,7 +25,7 @@ app.add_middleware(
 
 # Update paths for containerized environment
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "faiss_index.index")
+INDEX_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "faiss_index.faiss")
 METADATA_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "doc_metadata.pkl")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -36,12 +36,6 @@ logger.info(f"Attempting to use feedback log file at: {FEEDBACK_FILE}")
 logger.info(f"BASE_DIR: {BASE_DIR}")
 logger.info(f"INDEX_PATH: {INDEX_PATH}")
 logger.info(f"METADATA_PATH: {METADATA_PATH}")
-
-try:
-    retriever = Retriever(index_path=INDEX_PATH, metadata_path=METADATA_PATH)
-except Exception as e:
-    logger.error(f"Failed to initialize Retriever: {str(e)}")
-    raise RuntimeError(f"Retriever initialization failed: {str(e)}")
 
 
 
@@ -133,12 +127,17 @@ async def store_feedback(feedback: FeedbackItem):
 async def handle_query(request: QueryRequest):
     try:
         logger.info(f"Received query: {request.query}, k: {request.k}")
-
+        retriever= Retriever(
+            index_path=INDEX_PATH,
+            metadata_path=METADATA_PATH,
+            api_key=request.api_key
+        )
+        logger.info(f"Retriever initialized with index: {INDEX_PATH}, metadata: {METADATA_PATH}")
         docs = retriever.query(request.query, k=request.k)
         context = "\n".join([doc.get("content", "") for doc in docs])
         logger.info(f"Retrieved {len(docs)} documents, context length: {len(context)}")
 
-        prompt = f"Context:\n{context}\n\nQuestion: {request.query}\n\nAnswer:"
+        prompt = f"Question: {request.query}\n\nContext:\n{context}\n\nAnswer:"
         
         response = call_gemini(
             api_key=request.api_key,
