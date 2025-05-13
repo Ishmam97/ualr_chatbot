@@ -1,13 +1,14 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field 
-from backend.ualr_chatbot.retriever import Retriever
-from backend.ualr_chatbot.llm import call_gemini
 import os
 import logging
-import json 
+from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+import json
+
+from backend.ualr_chatbot.retriever import Retriever
+from backend.ualr_chatbot.llm import call_gemini
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -42,17 +43,27 @@ except Exception as e:
     logger.error(f"Failed to initialize Retriever: {str(e)}")
     raise RuntimeError(f"Retriever initialization failed: {str(e)}")
 
-#models
+
+
 class FeedbackItem(BaseModel):
+    model_config = ConfigDict(
+        json_encoders={
+            # Tell Pydantic how to encode datetime objects
+            datetime: lambda dt: dt.isoformat()
+        }
+    )
+    
     timestamp: datetime
     query: Optional[str] = None
     response: Optional[str] = None
-    feedback_type: str # e.g., "thumbs_up", "thumbs_down", "correction_suggestion"
+    feedback_type: str  # e.g., "thumbs_up", "thumbs_down", "correction_suggestion"
     thumbs_down_reason: Optional[str] = None
+    thumbs_up_reason: Optional[str] = None
     corrected_question: Optional[str] = None
     correct_answer: Optional[str] = None
     model_used: Optional[str] = None
-    retrieved_docs: Optional[List[Dict[str, Any]]] = None 
+    retrieved_docs: Optional[List[Dict[str, Any]]] = None
+    source_message_id: Optional[str] = None
 
 class QueryRequest(BaseModel):
     query: str
@@ -62,8 +73,8 @@ class QueryRequest(BaseModel):
 
 SYSTEM_PROMPT = """
 You are a helpful chatbot for the University of Arkansas at Little Rock (UALR). 
-Use the following context to answer the question concisely and accurately. 
-If the context is empty or lacks specific details, respond with: 
+Use the following context to answer the question. 
+Be helpful with your answer, respond with: 
 "I was unable to find specific information regarding this, but here is what you can do: 
 Contact UALR's main office at (501) 569-3000 or email info@ualr.edu for further assistance."
 """
