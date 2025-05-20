@@ -1,8 +1,10 @@
 import pickle
 import numpy as np
 import os
-import logging
 import faiss
+import logging
+from google import genai
+from google.genai import types
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -19,8 +21,7 @@ class Retriever:
         except Exception as e:
             logger.error(f"Failed to initialize Gemini model: {str(e)}")
             raise
-
-        # Load FAISS index
+        
         try:
             self.index = faiss.read_index(index_path)
             logger.info(f"FAISS index loaded, dimension: {self.index.d}, num vectors: {self.index.ntotal}")
@@ -28,7 +29,6 @@ class Retriever:
             logger.error(f"Failed to load FAISS index: {str(e)}")
             raise
 
-        # Load metadata
         try:
             with open(metadata_path, "rb") as f:
                 self.doc_metadata = pickle.load(f)
@@ -55,7 +55,7 @@ class Retriever:
             D, I = self.index.search(embedding, k)
             logger.info(f"Search results: distances={D[0]}, indices={I[0]}")
         except Exception as e:
-            logger.error(f"FAISS search failed: {str(e)}")
+            logger.error(f"embedding search failed: {str(e)}")
             raise
 
         results = []

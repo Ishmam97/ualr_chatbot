@@ -25,7 +25,7 @@ app.add_middleware(
 
 # Update paths for containerized environment
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-INDEX_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "faiss_index.index")
+INDEX_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "faiss_index.faiss")
 METADATA_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "doc_metadata.pkl")
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))

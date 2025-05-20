@@ -8,3 +8,4 @@ poetry.lock
 /tests/
 *.pyc
 notes
+.env
