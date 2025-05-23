@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 import uuid
+import re
 from langsmith import Client
 
 from backend.ualr_chatbot.retriever import Retriever
@@ -48,6 +49,29 @@ if LANGSMITH_API_KEY:
         logger.info(f"LangSmith client initialized with project: {LANGSMITH_PROJECT}")
     except Exception as e:
         logger.error(f"Failed to initialize LangSmith client: {e}")
+
+def extract_uuid_from_run_id(run_id: str) -> str:
+    """
+    Extract UUID from LangChain run_id format.
+    Examples:
+    - "run--9f67587f-11c2-4a3f-aef1-1b57a8d5a31d-0" -> "9f67587f-11c2-4a3f-aef1-1b57a8d5a31d"
+    - "9f67587f-11c2-4a3f-aef1-1b57a8d5a31d" -> "9f67587f-11c2-4a3f-aef1-1b57a8d5a31d"
+    """
+    if not run_id:
+        return run_id
+    
+    # Try to extract UUID pattern from the run_id
+    uuid_pattern = r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})'
+    match = re.search(uuid_pattern, run_id, re.IGNORECASE)
+    
+    if match:
+        extracted_uuid = match.group(1)
+        logger.info(f"Extracted UUID '{extracted_uuid}' from run_id '{run_id}'")
+        return extracted_uuid
+    
+    # If no UUID pattern found, return original (might already be a clean UUID)
+    logger.warning(f"Could not extract UUID from run_id: {run_id}")
+    return run_id
 
 class FeedbackItem(BaseModel):
     model_config = ConfigDict(
@@ -104,21 +128,27 @@ async def store_feedback(feedback: FeedbackItem):
     
     logger.info(f"Target feedback file for this request: {FEEDBACK_FILE}")
 
-    if feedback.run_id:
+    if feedback.run_id and langsmith_client:
         try:
+            # Extract clean UUID from run_id
+            clean_run_id = extract_uuid_from_run_id(feedback.run_id)
+            
             score = 1.0 if feedback.feedback_type == "thumbs_up" else 0.0
             comment = feedback.thumbs_up_reason if feedback.feedback_type == "thumbs_up" else feedback.thumbs_down_reason
             if feedback.feedback_type == "correction_suggestion":
                 comment = f"Correction: Q: {feedback.corrected_question}, A: {feedback.correct_answer}"
                 score = 0.0
 
+            logger.info(f"Submitting feedback to LangSmith with run_id: {clean_run_id}")
             langsmith_client.create_feedback(
-                run_id=feedback.run_id,
+                run_id=clean_run_id,
                 key="user_rating",
                 score=score,
-                comment=comment or "No comment"
+                comment=comment or "No comment",
+                # Optional: specify project if needed
+                # project_id=LANGSMITH_PROJECT
             )
-            logger.info(f"Feedback submitted to LangSmith for run_id {feedback.run_id}")
+            logger.info(f"Feedback submitted to LangSmith for run_id {clean_run_id}")
         except Exception as e:
             logger.error(f"Failed to submit feedback to LangSmith: {e}")
 
@@ -174,6 +204,9 @@ async def handle_query(request: QueryRequest):
             system_prompt=SYSTEM_PROMPT
         )
 
+        # Log the response ID for debugging
+        logger.info(f"LangChain response ID: {response.id}")
+        
         return {"response": response, "retrieved_docs": docs, "run_id": response.id}
     
     except Exception as e:

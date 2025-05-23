@@ -94,10 +94,8 @@ for i, msg_data in enumerate(st.session_state.messages):
         if msg_data["role"] != "assistant":
             continue
 
-        # Ensure message_id exists
-        message_id = msg_data.setdefault("message_id", f"asst_fallback_{i}_{datetime.utcnow().timestamp()}")
-        feedback_key = f"feedback_{message_id}"
-
+        feedback_key = f"feedback_{msg_data['run_id']}"
+        message_id = msg_data["message_id"]
         # Initialize feedback_states if missing
         st.session_state.setdefault("feedback_states", {})
 
