@@ -3,21 +3,29 @@ import requests
 import json
 import os
 from datetime import datetime
-from streamlit_feedback import streamlit_feedback # Import the component
+from streamlit_feedback import streamlit_feedback
+from langsmith import Client
+import logging
+import time
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
 
 # Get the API URL from environment variable or use default
 API_URL = os.environ.get("API_URL", "http://backend:8000")
 
 # Page configuration
-st.set_page_config(page_title="UALR Chatbot Demo", layout="centered")
 st.title("🎓 UALR Q&A Chatbot")
 
+# Sidebar for API key and model selection
 st.sidebar.title("⚙️ Options")
 api_key = st.sidebar.text_input(
     "Google Gemini API Key",
     type="password",
     placeholder="Enter your API key...",
-    key="api_key_input" # The value will be in st.session_state.api_key_input if needed elsewhere
+    key="api_key_input"
 )
 
 # Model selection
@@ -82,82 +90,75 @@ if "feedback_states" not in st.session_state:
 for i, msg_data in enumerate(st.session_state.messages):
     with st.chat_message(msg_data["role"]):
         st.markdown(msg_data["content"])
-        if msg_data["role"] == "assistant":
-            # Ensure message_id exists (for robustness, e.g. if migrating old messages)
-            if "message_id" not in msg_data:
-                 # Create a fallback message_id if missing
-                msg_data["message_id"] = f"asst_fallback_{i}_{datetime.utcnow().timestamp()}"
 
-            feedback_key = f"feedback_{msg_data['message_id']}"
+        if msg_data["role"] != "assistant":
+            continue
 
-            # Initialize feedback_states dictionary if it doesn't exist
-            if "feedback_states" not in st.session_state:
-                st.session_state.feedback_states = {}
+        # Ensure message_id exists
+        message_id = msg_data.setdefault("message_id", f"asst_fallback_{i}_{datetime.utcnow().timestamp()}")
+        feedback_key = f"feedback_{message_id}"
 
-            # Check if feedback has already been given for this message
-            if feedback_key in st.session_state.feedback_states:
-                # Display submitted feedback
-                try:
-                    score_display = st.session_state.feedback_states[feedback_key]
-                    st.markdown(f"<small>Feedback: {score_display} (submitted)</small>", unsafe_allow_html=True)
-                except KeyError:
-                    # Handle case where the key might be missing despite the check
-                    st.markdown("<small>Feedback status unavailable</small>", unsafe_allow_html=True)
-                    # Recreate the feedback key entry (optional)
-                    st.session_state.feedback_states[feedback_key] = "⚠️"
-            else:
-                # Show the feedback widget if no feedback has been given yet
-                feedback = streamlit_feedback(
-                    feedback_type="thumbs",
-                    optional_text_label="[Optional] Explain your feedback",
-                    key=feedback_key,
-                )
-                if feedback:
-                    # Store feedback to prevent re-submission and to update UI
-                    st.session_state.feedback_states[feedback_key] = feedback["score"]
+        # Initialize feedback_states if missing
+        st.session_state.setdefault("feedback_states", {})
 
-                    # Determine feedback type and reason field based on thumbs direction
-                    if feedback["score"] == "👍":
-                        feedback_type_val = "thumbs_up"
-                        reason_field = "thumbs_up_reason"
-                    else:
-                        feedback_type_val = "thumbs_down"
-                        reason_field = "thumbs_down_reason"
+        # Feedback already submitted
+        if feedback_key in st.session_state.feedback_states:
+            score_display = st.session_state.feedback_states.get(feedback_key, "✅")
+            st.markdown(f"<small>Feedback: {score_display} (submitted)</small>", unsafe_allow_html=True)
+            continue
 
-                    # Create feedback payload with the correct field structure
-                    feedback_payload = {
-                        "timestamp": datetime.utcnow().isoformat(),
-                        "query": msg_data.get("query", "Unknown query (feedback)"),
-                        "response": msg_data["content"],
-                        "feedback_type": feedback_type_val,
-                        reason_field: feedback.get("text"),  # Use the appropriate reason field
-                        "model_used": msg_data.get("model_used", "Unknown model (feedback)"),
-                        "source_message_id": msg_data["message_id"],
-                        # "retrieved_docs": msg_data.get("retrieved_docs")
-                    }
-                    print(f"Submitting feedback payload: {feedback_payload}")
+        # Show feedback widget
+        feedback = streamlit_feedback(
+            feedback_type="thumbs",
+            optional_text_label="[Optional] Explain your feedback",
+            key=feedback_key,
+        )
 
-                    try:
-                        api_response = requests.post(f"{API_URL}/feedback", json=feedback_payload, timeout=10)
-                        api_response.raise_for_status()
-                        st.toast(f"Feedback ({feedback['score']}) submitted. Thank you!", icon="✅")
-                        st.rerun()  # Rerun to update UI and show "Feedback given"
-                    except requests.exceptions.HTTPError as http_err:
-                        st.error(f"API error submitting feedback: {http_err}")
-                        # Remove the feedback state to allow retry
-                        if feedback_key in st.session_state.feedback_states:
-                            del st.session_state.feedback_states[feedback_key]
-                    except requests.exceptions.RequestException as req_err:
-                        st.error(f"Connection error submitting feedback: {req_err}")
-                        if feedback_key in st.session_state.feedback_states:
-                            del st.session_state.feedback_states[feedback_key]
+        if not feedback:
+            continue
+
+        # Store feedback to prevent resubmission
+        st.session_state.feedback_states[feedback_key] = feedback["score"]
+
+        # Determine feedback details
+        is_thumbs_up = feedback["score"] == "👍"
+        feedback_type_val = "thumbs_up" if is_thumbs_up else "thumbs_down"
+        reason_field = "thumbs_up_reason" if is_thumbs_up else "thumbs_down_reason"
+
+        # Build payload
+        feedback_payload = {
+            "timestamp": datetime.utcnow().isoformat(),
+            "query": msg_data.get("query", "Unknown query (feedback)"),
+            "response": msg_data["content"],
+            "feedback_type": feedback_type_val,
+            reason_field: feedback.get("text"),
+            "model_used": msg_data.get("model_used", "Unknown model"),
+            "source_message_id": message_id,
+            "run_id": msg_data.get("run_id")  # ✅ Include LangSmith run_id
+        }
+
+        print(f"Submitting feedback payload: {feedback_payload}")
+
+        # Submit feedback to backend
+        try:
+            api_response = requests.post(f"{API_URL}/feedback", json=feedback_payload, timeout=10)
+            api_response.raise_for_status()
+            st.toast(f"Feedback ({feedback['score']}) submitted. Thank you!", icon="✅")
+            st.rerun()
+        except requests.exceptions.HTTPError as http_err:
+            st.error(f"API error submitting feedback: {http_err}")
+            st.session_state.feedback_states.pop(feedback_key, None)
+        except requests.exceptions.RequestException as req_err:
+            st.error(f"Connection error submitting feedback: {req_err}")
+            st.session_state.feedback_states.pop(feedback_key, None)
+
 
 # Chat input for user queries
 if prompt := st.chat_input("Ask a question about UALR:"):
-    if not api_key: # api_key is the direct value from st.sidebar.text_input
+    if not api_key:
         st.error("Please provide a valid API key in the sidebar.")
     else:
-        # Add user message to chat history with a unique ID
+        # Add user message to chat history
         user_message_timestamp = datetime.utcnow().isoformat()
         user_msg_id = f"user_{user_message_timestamp}_{len(st.session_state.messages)}"
         st.session_state.messages.append({
@@ -165,57 +166,50 @@ if prompt := st.chat_input("Ask a question about UALR:"):
             "content": prompt,
             "message_id": user_msg_id
         })
-        # User message will be displayed on the next rerun by the loop above
 
-        # Display assistant response
-        # No need for `with st.chat_message("assistant")` here as the loop handles it
         with st.spinner("Thinking..."):
             try:
                 payload = {
                     "query": prompt,
                     "api_key": api_key,
                     "k": k,
-                    "model": model # Current model selection for this query
+                    "model": model
                 }
                 response = requests.post(f"{API_URL}/query", json=payload, timeout=60)
                 response.raise_for_status()
                 result = response.json()
 
-                assistant_response_content = result.get("response", "Sorry, I could not generate a response.")
+                response_dict = result.get("response", {})
+                assistant_response_content = response_dict.get("content", "Sorry, I could not generate a response.")
                 retrieved_docs = result.get("retrieved_docs", [])
+                run_id = result.get("run_id", None)
 
-                # Add assistant message to chat history with relevant data
                 assistant_message_timestamp = datetime.utcnow().isoformat()
                 assistant_msg_id = f"asst_{assistant_message_timestamp}_{len(st.session_state.messages)}"
                 st.session_state.messages.append({
                     "role": "assistant",
                     "content": assistant_response_content,
-                    "query": prompt,  # Store the user query that led to this response
+                    "query": prompt,
                     "retrieved_docs": retrieved_docs,
-                    "model_used": model,  # Store the model used for this specific response
-                    "message_id": assistant_msg_id
+                    "model_used": model,
+                    "message_id": assistant_msg_id,
+                    "run_id": run_id
                 })
+                logger.info(f"Query response stored with run_id: {run_id}")
                 st.rerun()
 
             except requests.exceptions.HTTPError as e:
-                error_msg = "Unknown error"
+                error_msg = f"{e.response.status_code}: {e.response.text}"
                 try:
-                    error_detail = e.response.json().get('detail', str(e.response.text))
+                    error_detail = e.response.json().get('detail', error_msg)
                     error_msg = f"{e.response.status_code}: {error_detail}"
                 except json.JSONDecodeError:
-                    error_msg = f"{e.response.status_code}: {e.response.text}"
-                except AttributeError: # If e.response is None or not as expected
-                    error_msg = str(e)
+                    pass
                 st.error(f"Backend error: {error_msg}")
-                # Optionally, add an error message to the chat display itself
-                # assistant_error_msg_id = f"asst_error_{datetime.utcnow().isoformat()}_{len(st.session_state.messages)}"
-                # st.session_state.messages.append({
-                #     "role": "assistant", "content": f"Error from backend: {error_msg}",
-                #     "query": prompt, "model_used": model, "message_id": assistant_error_msg_id, "is_error": True
-                # })
-                # st.experimental_rerun()
-
+                logger.error(f"Backend error: {error_msg}")
             except requests.exceptions.RequestException as e:
                 st.error(f"Failed to connect to backend: {e}")
+                logger.error(f"Failed to connect to backend: {e}")
             except (json.JSONDecodeError, KeyError) as e:
                 st.error(f"Received an invalid response from the backend: {e}")
+                logger.error(f"Invalid backend response: {e}")

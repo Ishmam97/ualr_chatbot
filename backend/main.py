@@ -5,7 +5,8 @@ import logging
 from pydantic import BaseModel, ConfigDict
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-import json
+import uuid
+from langsmith import Client
 
 from backend.ualr_chatbot.retriever import Retriever
 from backend.ualr_chatbot.llm import call_gemini
@@ -17,7 +18,7 @@ app = FastAPI(title="UALR Chatbot API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for now, restrict in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,19 +31,27 @@ METADATA_PATH = os.path.join(BASE_DIR, "backend", "ualr_chatbot", "doc_metadata.
 
 APP_DIR = os.path.dirname(os.path.abspath(__file__))
 FEEDBACK_FILE = os.path.join(APP_DIR, "feedback_log.jsonl")
-# Add this log line to see the exact path being used when the app starts
-logger.info(f"Attempting to use feedback log file at: {FEEDBACK_FILE}")
+logger.info(f"Feedback log file path: {FEEDBACK_FILE}")
 
-logger.info(f"BASE_DIR: {BASE_DIR}")
-logger.info(f"INDEX_PATH: {INDEX_PATH}")
-logger.info(f"METADATA_PATH: {METADATA_PATH}")
+# Initialize LangSmith client
+LANGSMITH_API_KEY = "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"
+LANGSMITH_PROJECT = os.environ.get("LANGSMITH_PROJECT", "ualr-chatbot")
+LANGSMITH_ENDPOINT = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
-
+langsmith_client = None
+if LANGSMITH_API_KEY:
+    try:
+        langsmith_client = Client(
+            api_key=LANGSMITH_API_KEY,
+            api_url=LANGSMITH_ENDPOINT
+        )
+        logger.info(f"LangSmith client initialized with project: {LANGSMITH_PROJECT}")
+    except Exception as e:
+        logger.error(f"Failed to initialize LangSmith client: {e}")
 
 class FeedbackItem(BaseModel):
     model_config = ConfigDict(
         json_encoders={
-            # Tell Pydantic how to encode datetime objects
             datetime: lambda dt: dt.isoformat()
         }
     )
@@ -50,7 +59,7 @@ class FeedbackItem(BaseModel):
     timestamp: datetime
     query: Optional[str] = None
     response: Optional[str] = None
-    feedback_type: str  # e.g., "thumbs_up", "thumbs_down", "correction_suggestion"
+    feedback_type: str
     thumbs_down_reason: Optional[str] = None
     thumbs_up_reason: Optional[str] = None
     corrected_question: Optional[str] = None
@@ -58,6 +67,7 @@ class FeedbackItem(BaseModel):
     model_used: Optional[str] = None
     retrieved_docs: Optional[List[Dict[str, Any]]] = None
     source_message_id: Optional[str] = None
+    run_id: Optional[str] = None
 
 class QueryRequest(BaseModel):
     query: str
@@ -69,7 +79,7 @@ SYSTEM_PROMPT = """
 You are a helpful chatbot for the University of Arkansas at Little Rock (UALR). 
 Use the following context to answer the question. 
 Be helpful with your answer by describing what can be done to resolve the question,
-add ths to your response if you do not know the answer: 
+add this to your response if you do not know the answer: 
 "I was unable to find specific information regarding this, but here is what you can do: 
 Contact UALR's main office at (501) 569-3000 or email info@ualr.edu for further assistance."
 """
@@ -93,6 +103,24 @@ async def store_feedback(feedback: FeedbackItem):
         logger.info(f"correct_answer: {feedback.correct_answer}")
     
     logger.info(f"Target feedback file for this request: {FEEDBACK_FILE}")
+
+    if feedback.run_id:
+        try:
+            score = 1.0 if feedback.feedback_type == "thumbs_up" else 0.0
+            comment = feedback.thumbs_up_reason if feedback.feedback_type == "thumbs_up" else feedback.thumbs_down_reason
+            if feedback.feedback_type == "correction_suggestion":
+                comment = f"Correction: Q: {feedback.corrected_question}, A: {feedback.correct_answer}"
+                score = 0.0
+
+            langsmith_client.create_feedback(
+                run_id=feedback.run_id,
+                key="user_rating",
+                score=score,
+                comment=comment or "No comment"
+            )
+            logger.info(f"Feedback submitted to LangSmith for run_id {feedback.run_id}")
+        except Exception as e:
+            logger.error(f"Failed to submit feedback to LangSmith: {e}")
 
     try:
         logger.info(f"[{request_timestamp_str}] Attempting to open file '{FEEDBACK_FILE}' for append...")
@@ -145,8 +173,8 @@ async def handle_query(request: QueryRequest):
             model=request.model,
             system_prompt=SYSTEM_PROMPT
         )
-        
-        return {"response": response, "retrieved_docs": docs}
+
+        return {"response": response, "retrieved_docs": docs, "run_id": response.id}
     
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}")
@@ -154,7 +182,13 @@ async def handle_query(request: QueryRequest):
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "message": "UALR Chatbot API is running"}
+    health_info = {
+        "status": "healthy", 
+        "message": "UALR Chatbot API is running",
+        "langsmith_connected": langsmith_client is not None,
+        "langsmith_project": LANGSMITH_PROJECT if langsmith_client else None
+    }
+    return health_info
 
 @app.get("/")
 async def root():

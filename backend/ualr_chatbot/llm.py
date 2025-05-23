@@ -21,15 +21,13 @@ def call_gemini(api_key: str, prompt: str, model: str = "gemini-1.5-flash-latest
         # Check for block reason in the response
         if response.response_metadata.get("prompt_feedback", {}).get("block_reason") != 0:
             raise ValueError(f"Request blocked: {response.response_metadata['prompt_feedback']['block_reason']}")
-        # Check for safety ratings
         safety_ratings = response.response_metadata.get("safety_ratings", [])
         if any(rating.get("blocked") for rating in safety_ratings):
             raise ValueError(f"Request blocked by safety ratings: {safety_ratings}")
-        # Check for empty content
         if not response.content:
             raise ValueError("Empty response content")
 
-        return response.content
+        return response
         
     except requests.exceptions.RequestException as e:
         raise requests.exceptions.RequestException(f"API request failed: {str(e)}")
