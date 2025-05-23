@@ -34,8 +34,10 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 FEEDBACK_FILE = os.path.join(APP_DIR, "feedback_log.jsonl")
 logger.info(f"Feedback log file path: {FEEDBACK_FILE}")
 
-# Initialize LangSmith client
-LANGSMITH_API_KEY = "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"
+
+LANGSMITH_API_KEY = os.environ.get("LANGSMITH_API_KEY")
+if not LANGSMITH_API_KEY:
+    logger.warning("LangSmith API key not found. Feedback submission to LangSmith will be disabled.")
 LANGSMITH_PROJECT = os.environ.get("LANGSMITH_PROJECT", "ualr-chatbot")
 LANGSMITH_ENDPOINT = os.environ.get("LANGSMITH_ENDPOINT", "https://api.smith.langchain.com")
 
@@ -49,6 +51,7 @@ if LANGSMITH_API_KEY:
         logger.info(f"LangSmith client initialized with project: {LANGSMITH_PROJECT}")
     except Exception as e:
         logger.error(f"Failed to initialize LangSmith client: {e}")
+
 
 def extract_uuid_from_run_id(run_id: str) -> str:
     """
